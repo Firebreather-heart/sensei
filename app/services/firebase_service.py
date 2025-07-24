@@ -3,7 +3,7 @@ from firebase_admin import credentials, firestore_async
 import os
 
 if not firebase_admin._apps:
-    cred_path = os.getenv("FIREBASE_KEY_PATH", "firebase_key.json")
+    cred_path = os.getenv("FIREBASE_KEY_PATH", "firebasekey.json")
     cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)
 
