@@ -1,4 +1,3 @@
-from typing import Optional
 import firebase_admin
 from firebase_admin import credentials, firestore_async
 import os
