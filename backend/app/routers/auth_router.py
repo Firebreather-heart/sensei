@@ -46,14 +46,14 @@ async def login(user_login: UserLogin) -> Token:
         )
     return user_token 
 
-@router.get('me', response_model = User)
+@router.get('/me', response_model = User)
 async def get_me(current_user: UserSecure = Depends(get_current_user)) -> UserSecure:
     """
     Get the current authenticated user.
     """
     return current_user
 
-@router.put('/me', response_model=User)
+@router.put('/me/update', response_model=User)
 async def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_user)) -> User:
     """
     Update the current authenticated user.
