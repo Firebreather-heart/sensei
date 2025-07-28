@@ -2,7 +2,7 @@ from typing import Annotated
 from datetime import datetime
 from pydantic import BaseModel
 
-class VirtualFile(BaseModel):
+class VirtualFile(BaseModel): 
     """Base model for files in the virtua filesystem"""
     root:Annotated[str, "Username of the owner"] 
     directory: Annotated[bool, "True if this is a directory, False if this is a file"]

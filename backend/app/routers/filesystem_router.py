@@ -2,8 +2,6 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 from typing import List
 
-from app.models.users import UserSecure
-
 from ..services.filesystem import FileSystem
 from ..services.authorization_service import AuthorizationService
 from ..models.models import VirtualFile
@@ -50,7 +48,23 @@ async def get_public_files(limit: int = 50):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting public files: {str(e)}"
         )
-    
+
+
+@router.post('/files/create', response_model=VirtualFile, status_code=status.HTTP_201_CREATED)
+async def create_file(
+        file_data: dict,
+        current_user: UserSecure = Depends(get_current_user)) -> VirtualFile:
+    file_data['root'] = current_user.username
+
+    try:
+        file = VirtualFile.model_validate(file_data)
+        created_file = await fs.create_file(file)
+        return created_file
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error creating file: {str(e)}"
+        )
 
 @router.get("/files/public/{file_id}", response_model=VirtualFile, status_code=status.HTTP_200_OK)
 async def get_public_file(file_id: str) -> VirtualFile:
@@ -77,23 +91,6 @@ async def get_file(file_id: str, current_user: UserSecure = Depends(get_current_
         )
     return file
 
-
-
-@router.post('/files/create', response_model=VirtualFile, status_code=status.HTTP_201_CREATED)
-async def create_file(
-        file_data: dict,
-        current_user: UserSecure = Depends(get_current_user)) -> VirtualFile:
-    file_data['root'] = current_user.username
-
-    try:
-        file = VirtualFile.model_validate(file_data)
-        created_file = await fs.create_file(file)
-        return created_file
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error creating file: {str(e)}"
-        )
 
 
 @router.put('/files/{file_id}', response_model=VirtualFile, status_code=status.HTTP_200_OK)
