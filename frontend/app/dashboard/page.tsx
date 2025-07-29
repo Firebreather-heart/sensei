@@ -416,8 +416,11 @@ export default function DashboardPage() {
           {/* File Lists */}
           <div className="lg:col-span-2">
             <FileSystemExplorer
-              onFileSelect={setSelectedFile}
+              onFileSelect={(file) => setSelectedFile(file)}
               onRefresh={fetchFiles}
+              onShareFile={handleShareFile}
+              onTogglePublic={toggleFilePublic}
+              onDeleteFile={(file) => handleFileDelete(file.id)}
             />
           </div>
 
