@@ -1,58 +1,74 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { CodeSpace, SpaceUser, ChatMessage, EditRequest } from "@/types/spaces";
-import { VirtualFile } from "@/types";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { CodeSpace, SpaceUser } from '@/types/spaces';
+import { VirtualFile } from '@/types';
 
 // Define the context shape
 interface SpaceContextType {
-  spaces: CodeSpace[];
-  activeSpace: CodeSpace | null;
-  currentUser: SpaceUser | null;
-  loadSpace: (spaceId: string) => Promise<CodeSpace | null>;
+  activeSpaces: CodeSpace[];           // List of all currently active spaces
+  currentSpace: CodeSpace | null;      // The space the user is currently in
+  currentUser: SpaceUser | null;       // Current user info
+  loading: boolean;
+  error: string | null;
+
+  // Core space operations
   createSpace: (name: string, isPublic: boolean) => Promise<CodeSpace>;
-  joinSpace: (joinCode: string) => Promise<CodeSpace | null>;
+  joinSpace: (joinCode: string) => Promise<boolean>;
+  joinSpaceById: (spaceId: string) => Promise<boolean>;
+  joinSpaceByCode: (joinCode: string) => Promise<boolean>;
+  leaveSpace: () => void;
+
+  // Communication
   sendMessage: (message: string) => void;
-  requestEditAccess: () => void;
-  approveEditRequest: (requestId: string) => void;
-  denyEditRequest: (requestId: string) => void;
-  updateFileInSpace: (file: VirtualFile) => void;
-  addFileToSpace: (file: VirtualFile) => void;
-  usersEditingFile: Map<string, Set<string>>;
-  registerUserEdit: (userId: string, username: string, fileId: string, position: number) => void;
-  unregisterUserEdit: (userId: string, fileId: string) => void;
+
+  // File operations
+  setActiveFile: (file: VirtualFile) => void;
+
+  // Edit permissions
+  requestEditPermission: () => Promise<boolean>;
+  grantEditPermission: (userId: string) => Promise<boolean>;
+  denyEditPermission: (userId: string) => Promise<boolean>;
+
+  // File saving (Y.js integration)
+  yDoc: any;
+  provider: any;
+  saveFile: () => Promise<boolean>;
 }
 
 // Create the context
 const SpaceContext = createContext<SpaceContextType | undefined>(undefined);
 
-// Create a mock current user based on localStorage or generate one
-const createMockCurrentUser = (): SpaceUser => {
-  // Try to get from localStorage first
-  const storedUser = localStorage.getItem("space_current_user");
-  if (storedUser) {
+// Session storage key for current user's space session
+const SESSION_STORAGE_KEY = "sensei_current_space_session";
+
+// Create a mock current user
+const createCurrentUser = (): SpaceUser => {
+  // Only access sessionStorage on the client side
+  if (typeof window !== 'undefined') {
     try {
-      const parsed = JSON.parse(storedUser);
-      return {
-        id: parsed.id,
-        username: parsed.username,
-        isCreator: false, // Will be updated when in a specific space
-        canEdit: false,   // Will be updated when in a specific space
-        isActive: true,
-        lastActivity: Date.now(),
-      };
+      const storedSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (storedSession) {
+        const session = JSON.parse(storedSession);
+        return {
+          id: session.userId,
+          username: session.username,
+          isCreator: false,
+          canEdit: false,
+          isActive: true,
+          lastActivity: Date.now(),
+        };
+      }
     } catch (e) {
-      console.error("Failed to parse stored user", e);
+      console.error("Failed to parse stored session", e);
     }
   }
 
   // Generate a new user
-  const id = uuidv4();
-  const username = `user_${id.substring(0, 5)}`;
+  const id = typeof window !== 'undefined' ? crypto.randomUUID() : 'ssr-user';
+  const username = `User_${id.substring(0, 5)}`;
 
-  // Store for future use
-  const newUser = {
+  return {
     id,
     username,
     isCreator: false,
@@ -60,381 +76,327 @@ const createMockCurrentUser = (): SpaceUser => {
     isActive: true,
     lastActivity: Date.now(),
   };
-
-  localStorage.setItem("space_current_user", JSON.stringify({
-    id: newUser.id,
-    username: newUser.username,
-  }));
-
-  return newUser;
 };
 
-// Create mock data for initial spaces
-const createInitialSpaces = (): CodeSpace[] => {
-  const storedSpaces = localStorage.getItem("spaces");
-  if (storedSpaces) {
-    try {
-      return JSON.parse(storedSpaces);
-    } catch (e) {
-      console.error("Failed to parse stored spaces", e);
-    }
-  }
+// API helper functions
+const apiClient = {
+  async createSpace(name: string, isPublic: boolean, userId: string, username: string): Promise<CodeSpace> {
+    const response = await fetch('/api/spaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        isPublic,
+        creatorName: username,
+        userId
+      }),
+    });
 
-  // Return empty array if no spaces exist
-  return [];
+    if (!response.ok) {
+      throw new Error('Failed to create space');
+    }
+
+    const data = await response.json();
+    return data.space;
+  },
+
+  async joinSpaceByCode(joinCode: string, userId: string, username: string): Promise<CodeSpace> {
+    const response = await fetch('/api/spaces/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        joinCode,
+        userId,
+        username
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to join space');
+    }
+
+    const data = await response.json();
+    return data.space;
+  },
+
+  async joinSpaceById(spaceId: string, userId: string, username: string): Promise<CodeSpace> {
+    const response = await fetch(`/api/spaces/${spaceId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        username
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to join space');
+    }
+
+    const data = await response.json();
+    return data.space;
+  },
+
+  async leaveSpace(spaceId: string, userId: string): Promise<void> {
+    const response = await fetch(`/api/spaces/${spaceId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to leave space');
+    }
+  },
+
+  async getActiveSpaces(): Promise<CodeSpace[]> {
+    const response = await fetch('/api/spaces');
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch spaces');
+    }
+
+    const data = await response.json();
+    return data.spaces;
+  }
 };
 
 // Provider component
-export const SpaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [spaces, setSpaces] = useState<CodeSpace[]>([]);
-  const [activeSpace, setActiveSpace] = useState<CodeSpace | null>(null);
+export const SpaceProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [activeSpaces, setActiveSpaces] = useState<CodeSpace[]>([]);
+  const [currentSpace, setCurrentSpace] = useState<CodeSpace | null>(null);
   const [currentUser, setCurrentUser] = useState<SpaceUser | null>(null);
-  const [usersEditingFile, setUsersEditingFile] = useState<Map<string, Set<string>>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [yDoc, setYDoc] = useState<any>(null);
+  const [provider, setProvider] = useState<any>(null);
 
   // Initialize state
   useEffect(() => {
-    const mockUser = createMockCurrentUser();
-    setCurrentUser(mockUser);
-    setSpaces(createInitialSpaces());
-  }, []);
+    const user = createCurrentUser();
+    setCurrentUser(user);
 
-  // Save spaces to localStorage whenever they change
-  useEffect(() => {
-    if (spaces.length > 0) {
-      localStorage.setItem("spaces", JSON.stringify(spaces));
-    }
-  }, [spaces]);
+    // Load active spaces
+    loadActiveSpaces();
 
-  // Helper to find a space by ID
-  const findSpace = (spaceId: string): CodeSpace | undefined => {
-    return spaces.find(space => space.id === spaceId);
-  };
+    setLoading(false);
 
-  // Load a specific space
-  const loadSpace = async (spaceId: string): Promise<CodeSpace | null> => {
-    const space = findSpace(spaceId);
-    if (!space) return null;
-
-    // Update this space to mark the current user as active
-    const updatedSpace = {
-      ...space,
-      users: space.users.map(user =>
-        user.id === currentUser?.id ? {
-          ...user,
-          isActive: true,
-          lastActivity: Date.now()
-        } : user
-      )
+    // Handle page unload/close - clean up user presence
+    const handleBeforeUnload = () => {
+      if (currentSpace && user) {
+        apiClient.leaveSpace(currentSpace.id, user.id).catch(console.error);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        }
+      }
     };
 
-    // Update spaces list and active space
-    setSpaces(prev => prev.map(s => s.id === spaceId ? updatedSpace : s));
-    setActiveSpace(updatedSpace);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Update current user with space-specific permissions
-    if (currentUser) {
-      const userInSpace = updatedSpace.users.find(u => u.id === currentUser.id);
-      if (userInSpace) {
-        setCurrentUser({
-          ...currentUser,
-          isCreator: userInSpace.isCreator,
-          canEdit: userInSpace.canEdit,
-          isActive: true,
-          lastActivity: Date.now(),
-        });
-      }
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
+  // Load active spaces from server
+  const loadActiveSpaces = async () => {
+    try {
+      const spaces = await apiClient.getActiveSpaces();
+      setActiveSpaces(spaces);
+    } catch (err) {
+      console.error('Failed to load active spaces:', err);
+      setError('Failed to load active spaces');
     }
-
-    return updatedSpace;
   };
 
-  // Create a new space
+  // Periodically refresh spaces list
+  useEffect(() => {
+    const interval = setInterval(loadActiveSpaces, 5000); // Refresh every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   const createSpace = async (name: string, isPublic: boolean): Promise<CodeSpace> => {
     if (!currentUser) throw new Error("No current user");
 
-    // Create space object
-    const newSpace: CodeSpace = {
-      id: uuidv4(),
-      name,
-      joinCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
-      createdAt: Date.now(),
-      creatorId: currentUser.id,
-      creatorName: currentUser.username,
-      users: [{
-        id: currentUser.id,
-        username: currentUser.username,
-        isCreator: true,
-        canEdit: true,
-        isActive: true,
-        lastActivity: Date.now()
-      }],
-      activeFile: null,
-      messages: [],
-      editRequests: [],
-      isPublic,
-      lastActivity: Date.now()
-    };
+    try {
+      const space = await apiClient.createSpace(name, isPublic, currentUser.id, currentUser.username);
 
-    // Update current user as creator
-    setCurrentUser({
-      ...currentUser,
-      isCreator: true,
-      canEdit: true,
-    });
+      // Update local state
+      setCurrentSpace(space);
+      setActiveSpaces(prev => [...prev, space]);
 
-    // Save the new space
-    setSpaces(prev => [newSpace, ...prev]);
-    setActiveSpace(newSpace);
+      // Store session
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+          spaceCode: space.joinCode,
+          spaceId: space.id,
+          userId: currentUser.id,
+          username: currentUser.username
+        }));
+      }
 
-    return newSpace;
+      console.log('Created space:', space);
+      return space;
+    } catch (err) {
+      console.error('Failed to create space:', err);
+      throw err;
+    }
   };
 
-  // Join an existing space
-  const joinSpace = async (joinCode: string): Promise<CodeSpace | null> => {
-    if (!currentUser) throw new Error("No current user");
-
-    // Find space with the join code
-    const space = spaces.find(s => s.joinCode === joinCode);
-    if (!space) return null;
-
-    // Check if user is already in the space
-    if (space.users.some(u => u.id === currentUser.id)) {
-      return loadSpace(space.id);
+  const joinSpace = async (joinCode: string): Promise<boolean> => {
+    if (!currentUser) {
+      console.error("No current user");
+      return false;
     }
 
-    // Add user to the space
-    const updatedSpace = {
-      ...space,
-      users: [...space.users, {
-        id: currentUser.id,
-        username: currentUser.username,
-        isCreator: false,
-        canEdit: false, // Start as viewer only
-        isActive: true,
-        lastActivity: Date.now()
-      }],
-      lastActivity: Date.now()
-    };
+    try {
+      const space = await apiClient.joinSpaceByCode(joinCode, currentUser.id, currentUser.username);
 
-    // Update spaces list
-    setSpaces(prev => prev.map(s => s.id === space.id ? updatedSpace : s));
-    setActiveSpace(updatedSpace);
+      // Update local state
+      setCurrentSpace(space);
+      await loadActiveSpaces(); // Refresh the list
 
-    // Update current user
-    setCurrentUser({
-      ...currentUser,
-      isCreator: false,
-      canEdit: false,
-    });
+      // Store session
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+          spaceCode: space.joinCode,
+          spaceId: space.id,
+          userId: currentUser.id,
+          username: currentUser.username
+        }));
+      }
 
-    return updatedSpace;
+      console.log('Joined space:', space);
+      return true;
+    } catch (err) {
+      console.error('Failed to join space:', err);
+      setError('Failed to join space');
+      return false;
+    }
   };
 
-  // Send a chat message
+  const joinSpaceById = async (spaceId: string): Promise<boolean> => {
+    if (!currentUser) {
+      console.error("No current user");
+      return false;
+    }
+
+    try {
+      const space = await apiClient.joinSpaceById(spaceId, currentUser.id, currentUser.username);
+
+      // Update local state
+      setCurrentSpace(space);
+      await loadActiveSpaces(); // Refresh the list
+
+      // Store session
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+          spaceCode: space.joinCode,
+          spaceId: space.id,
+          userId: currentUser.id,
+          username: currentUser.username
+        }));
+      }
+
+      console.log('Joined space by ID:', space);
+      return true;
+    } catch (err) {
+      console.error('Failed to join space by ID:', err);
+      setError('Failed to join space');
+      return false;
+    }
+  };
+
+  const joinSpaceByCode = async (joinCode: string): Promise<boolean> => {
+    return await joinSpace(joinCode);
+  };
+
+  const leaveSpace = async (): Promise<void> => {
+    if (!currentSpace || !currentUser) return;
+
+    try {
+      await apiClient.leaveSpace(currentSpace.id, currentUser.id);
+
+      // Update local state
+      setCurrentSpace(null);
+      await loadActiveSpaces(); // Refresh the list
+
+      // Clear session
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+
+      console.log('Left space');
+    } catch (err) {
+      console.error('Failed to leave space:', err);
+      setError('Failed to leave space');
+    }
+  };
+
+  // Placeholder implementations for other functions
   const sendMessage = (message: string) => {
-    if (!activeSpace || !currentUser) return;
-
-    const newMessage: ChatMessage = {
-      id: uuidv4(),
-      userId: currentUser.id,
-      username: currentUser.username,
-      message,
-      timestamp: Date.now()
-    };
-
-    const updatedSpace = {
-      ...activeSpace,
-      messages: [...activeSpace.messages, newMessage],
-      lastActivity: Date.now()
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+    console.log('Sending message:', message);
   };
 
-  // Request edit access
-  const requestEditAccess = () => {
-    if (!activeSpace || !currentUser) return;
-
-    // Check if request already exists
-    if (activeSpace.editRequests.some(r => r.userId === currentUser.id && r.pending)) {
-      return; // Don't create duplicate requests
-    }
-
-    const newRequest: EditRequest = {
-      id: uuidv4(),
-      userId: currentUser.id,
-      username: currentUser.username,
-      timestamp: Date.now(),
-      pending: true
-    };
-
-    const updatedSpace = {
-      ...activeSpace,
-      editRequests: [...activeSpace.editRequests, newRequest]
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+  const setActiveFile = (file: VirtualFile) => {
+    console.log('Setting active file:', file);
   };
 
-  // Approve an edit request
-  const approveEditRequest = (requestId: string) => {
-    if (!activeSpace || !currentUser?.isCreator) return;
-
-    // Find the request
-    const request = activeSpace.editRequests.find(r => r.id === requestId);
-    if (!request || !request.pending) return;
-
-    // Update request and user permissions
-    const updatedRequests = activeSpace.editRequests.map(r =>
-      r.id === requestId ? { ...r, pending: false } : r
-    );
-
-    const updatedUsers = activeSpace.users.map(u =>
-      u.id === request.userId ? { ...u, canEdit: true } : u
-    );
-
-    const updatedSpace = {
-      ...activeSpace,
-      editRequests: updatedRequests,
-      users: updatedUsers
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+  const requestEditPermission = async (): Promise<boolean> => {
+    console.log('Requesting edit permission');
+    return true;
   };
 
-  // Deny an edit request
-  const denyEditRequest = (requestId: string) => {
-    if (!activeSpace || !currentUser?.isCreator) return;
-
-    // Find the request
-    const request = activeSpace.editRequests.find(r => r.id === requestId);
-    if (!request || !request.pending) return;
-
-    // Update request status
-    const updatedRequests = activeSpace.editRequests.map(r =>
-      r.id === requestId ? { ...r, pending: false } : r
-    );
-
-    const updatedSpace = {
-      ...activeSpace,
-      editRequests: updatedRequests
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+  const grantEditPermission = async (userId: string): Promise<boolean> => {
+    console.log('Granting edit permission to:', userId);
+    return true;
   };
 
-  // Update a file in the active space
-  const updateFileInSpace = (file: VirtualFile) => {
-    if (!activeSpace) return;
-
-    // In a real app, we'd sync this with other users
-    // For now, just update the activeFile in the space
-    const updatedSpace = {
-      ...activeSpace,
-      activeFile: file,
-      lastActivity: Date.now()
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+  const denyEditPermission = async (userId: string): Promise<boolean> => {
+    console.log('Denying edit permission to:', userId);
+    return true;
   };
 
-  // Add a file to the active space
-  const addFileToSpace = (file: VirtualFile) => {
-    if (!activeSpace) return;
-
-    // In a real app, we'd add this to a files array in the space
-    // For now, just set it as the active file
-    const updatedSpace = {
-      ...activeSpace,
-      activeFile: file,
-      lastActivity: Date.now()
-    };
-
-    setActiveSpace(updatedSpace);
-    setSpaces(prev => prev.map(s => s.id === activeSpace.id ? updatedSpace : s));
+  const saveFile = async (): Promise<boolean> => {
+    console.log('Saving file');
+    return true;
   };
 
-  // Track user editing position
-  const registerUserEdit = (userId: string, username: string, fileId: string, position: number) => {
-    setUsersEditingFile(prev => {
-      // Create a deep copy of the map
-      const newMap = new Map(prev);
-
-      // Get or create the set of users for this file
-      if (!newMap.has(fileId)) {
-        newMap.set(fileId, new Set());
-      }
-
-      // Add user to the set
-      const userSet = newMap.get(fileId)!;
-      userSet.add(`${userId}:${position}:${username}`);
-
-      return newMap;
-    });
-  };
-
-  // Remove user editing position
-  const unregisterUserEdit = (userId: string, fileId: string) => {
-    setUsersEditingFile(prev => {
-      // Create a deep copy of the map
-      const newMap = new Map(prev);
-
-      // Get the set of users for this file
-      const userSet = newMap.get(fileId);
-      if (userSet) {
-        // Remove all entries for this user
-        const updatedSet = new Set(
-          [...userSet].filter(entry => !entry.startsWith(`${userId}:`))
-        );
-
-        if (updatedSet.size === 0) {
-          newMap.delete(fileId);
-        } else {
-          newMap.set(fileId, updatedSet);
-        }
-      }
-
-      return newMap;
-    });
-  };
-
-  const value = {
-    spaces,
-    activeSpace,
+  const contextValue: SpaceContextType = {
+    activeSpaces,
+    currentSpace,
     currentUser,
-    loadSpace,
+    loading,
+    error,
     createSpace,
     joinSpace,
+    joinSpaceById,
+    joinSpaceByCode,
+    leaveSpace,
     sendMessage,
-    requestEditAccess,
-    approveEditRequest,
-    denyEditRequest,
-    updateFileInSpace,
-    addFileToSpace,
-    usersEditingFile,
-    registerUserEdit,
-    unregisterUserEdit
+    setActiveFile,
+    requestEditPermission,
+    grantEditPermission,
+    denyEditPermission,
+    yDoc,
+    provider,
+    saveFile,
   };
 
   return (
-    <SpaceContext.Provider value={value}>
+    <SpaceContext.Provider value={contextValue}>
       {children}
     </SpaceContext.Provider>
   );
 };
 
-// Custom hook for using the context
-export const useSpaces = () => {
+// Hook to use the context
+export const useSpaces = (): SpaceContextType => {
   const context = useContext(SpaceContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useSpaces must be used within a SpaceProvider');
   }
   return context;
 };
 
-
+export default SpaceProvider;

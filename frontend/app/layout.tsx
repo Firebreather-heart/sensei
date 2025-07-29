@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+// import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SpaceProvider } from '@/contexts/SpaceContext'
 import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+// Use system fonts instead of Google Fonts to avoid network issues
+// const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Sensei ',
@@ -23,11 +24,11 @@ export default function RootLayout({
       <head>
         <style>{`
 html {
-  font-family: ${inter.style.fontFamily};
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
         `}</style>
       </head>
-      <body className={inter.className}>
+      <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <SpaceProvider>
             {children}

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -28,7 +27,7 @@ export default function SpacePage({ params }: { params: { spaceId: string } }) {
   const router = useRouter();
   const { spaceId } = params;
 
-  const { currentSpace, currentUser, joinSpace } = useSpaces();
+  const { currentSpace, currentUser, joinSpaceById } = useSpaces();
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -38,7 +37,7 @@ export default function SpacePage({ params }: { params: { spaceId: string } }) {
   // Mock user - in real app this would come from auth context
   const [user] = useState<User>({
     id: "user-1",
-    username: "John Doe", 
+    username: "John Doe",
     email: "john@example.com",
     role: "user"
   });
@@ -49,7 +48,7 @@ export default function SpacePage({ params }: { params: { spaceId: string } }) {
       setLoading(true);
       try {
         // Load the space
-        await joinSpace(spaceId);
+        await joinSpaceById(spaceId);
       } catch (error) {
         console.error("Failed to load space", error);
         toast({
@@ -64,7 +63,7 @@ export default function SpacePage({ params }: { params: { spaceId: string } }) {
     };
 
     initPage();
-  }, [spaceId, joinSpace, router]);
+  }, [spaceId, joinSpaceById, router]);
 
   const handleInviteUser = () => {
     if (!inviteEmail.trim() || !currentSpace) return;
