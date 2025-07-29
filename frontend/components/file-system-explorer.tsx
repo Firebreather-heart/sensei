@@ -31,6 +31,14 @@ import { CreateFolderDialog } from "@/components/create-folder-dialog"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 import { VirtualFile } from "@/types"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 
 // Define a tree node structure for our file tree
 interface FileTreeNode {
@@ -68,6 +76,10 @@ export function FileSystemExplorer({
     const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false)
     const [currentPath, setCurrentPath] = useState<string[]>([])
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+
+    // Add these state variables inside the FileSystemExplorer component
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+    const [fileToDelete, setFileToDelete] = useState<FileTreeNode | null>(null)
 
     // File input refs for upload features
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -303,15 +315,20 @@ export function FileSystemExplorer({
 
     // Handle file deletion
     const handleDelete = async (file: FileTreeNode) => {
-        if (!window.confirm(`Are you sure you want to delete "${file.displayName || file.name}"${file.directory ? " and all its contents" : ""}?`)) {
-            return
-        }
+        // Show the delete dialog
+        setFileToDelete(file)
+        setShowDeleteDialog(true)
+    }
+
+    // Add this new function to perform the actual deletion
+    const confirmDelete = async () => {
+        if (!fileToDelete) return
 
         try {
             const token = localStorage.getItem("token")
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-            const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${file.id}`, {
+            const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${fileToDelete.id}`, {
                 method: "DELETE",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -321,17 +338,17 @@ export function FileSystemExplorer({
             if (response.ok) {
                 toast({
                     title: "Deleted Successfully",
-                    description: `"${file.displayName || file.name}" has been deleted.`,
+                    description: `"${fileToDelete.displayName || fileToDelete.name}" has been deleted.`,
                 })
 
                 // Call parent handler if provided
                 if (onDeleteFile) {
                     const fileData = {
-                        id: file.id,
-                        name: file.name,
+                        id: fileToDelete.id,
+                        name: fileToDelete.name,
                         content: "",
-                        directory: file.directory,
-                        public: file.public,
+                        directory: fileToDelete.directory,
+                        public: fileToDelete.public,
                         can_view: [],
                         can_edit: [],
                         created_at: "",
@@ -347,7 +364,7 @@ export function FileSystemExplorer({
                 onRefresh()
 
                 // If this was the selected file, clear selection
-                if (selectedFile === file.id) {
+                if (selectedFile === fileToDelete.id) {
                     setSelectedFile(null)
                 }
             } else {
@@ -360,6 +377,10 @@ export function FileSystemExplorer({
                 description: "An error occurred while deleting.",
                 variant: "destructive",
             })
+        } finally {
+            // Close the dialog
+            setShowDeleteDialog(false)
+            setFileToDelete(null)
         }
     }
 
@@ -766,6 +787,46 @@ export function FileSystemExplorer({
                     renderFileTree(fileTree)
                 )}
             </div>
+
+            <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+                if (!open) {
+                    setShowDeleteDialog(false)
+                    setFileToDelete(null)
+                }
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete {fileToDelete?.directory ? "Folder" : "File"}</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete
+                            <span className="font-medium mx-1">
+                                "{fileToDelete?.displayName || fileToDelete?.name}"
+                            </span>
+                            {fileToDelete?.directory ? " and all its contents" : ""}?
+                            <div className="mt-2 text-red-500">
+                                This action cannot be undone.
+                            </div>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setShowDeleteDialog(false)
+                                setFileToDelete(null)
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={confirmDelete}
+                        >
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <CreateFileDialog
                 open={showCreateFileDialog}

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Code2, Eye, EyeOff } from "lucide-react"
+import { getApiUrl } from "@/lib/utils"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -26,8 +27,14 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://sensei-2keb.onrender.com"
+      // Get API URL with better fallback handling
+      const apiUrl = getApiUrl()
+
       console.log("Making login request to:", `${apiUrl}/api/v1/auth/login`)
+      console.log("Environment variables:", {
+        NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+        NODE_ENV: process.env.NODE_ENV
+      })
 
       const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
         method: "POST",
@@ -44,9 +51,15 @@ export default function LoginPage() {
         const contentType = response.headers.get("content-type")
         if (contentType && contentType.includes("application/json")) {
           const data = await response.json()
-          // console.log("Login successful:", data)
+          console.log("Login successful:", data)
+
+          // Store token and ensure it's persisted
           localStorage.setItem("token", data.access_token)
-          router.push("/dashboard")
+
+          // Add a small delay to ensure localStorage is written
+          setTimeout(() => {
+            router.push("/dashboard")
+          }, 100)
         } else {
           const responseText = await response.text()
           console.error("Non-JSON response:", responseText)

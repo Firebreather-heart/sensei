@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Code2, FileText, Search, Settings, LogOut, Menu, X, Globe, Share2 } from "lucide-react"
+import { Code2, FileText, Settings, LogOut, Menu, X, Users } from "lucide-react"
 
 interface User {
   id: string
@@ -40,10 +40,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: FileText },
-    { name: "My Code", href: "/dashboard/files", icon: Code2 },
-    { name: "Shared", href: "/dashboard/shared", icon: Share2 },
-    { name: "Public", href: "/dashboard/public", icon: Globe },
-    { name: "Search", href: "/dashboard/search", icon: Search },
+    { name: "Spaces", href: "/dashboard/spaces", icon: Users },
   ]
 
   return (

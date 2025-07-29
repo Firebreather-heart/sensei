@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
-import { Toaster } from "@/components/ui/toaster"
+import { Inter } from 'next/font/google'
+import { ThemeProvider } from '@/components/theme-provider'
+import { SpaceProvider } from '@/contexts/SpaceContext'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Sensei ',
@@ -16,19 +19,21 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <style>{`
 html {
-  font-family: ${GeistSans.style.fontFamily};
-  --font-sans: ${GeistSans.variable};
-  --font-mono: ${GeistMono.variable};
+  font-family: ${inter.style.fontFamily};
 }
         `}</style>
       </head>
-      <body>
-        {children}
-        <Toaster />
+      <body className={inter.className}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <SpaceProvider>
+            {children}
+            <Toaster />
+          </SpaceProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

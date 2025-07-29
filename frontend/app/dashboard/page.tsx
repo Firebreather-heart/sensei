@@ -43,23 +43,42 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (!token) {
-      router.push("/login")
-      return
+    const checkAuth = () => {
+      console.log("Checking authentication in dashboard")
+      const token = localStorage.getItem("token")
+      console.log("Token found:", !!token)
+
+      if (!token) {
+        console.log("No token found, redirecting to login")
+        router.push("/login")
+        return
+      }
+
+      console.log("Token exists, fetching user data")
+      fetchUserData()
+      fetchFiles()
+      fetchSharedFiles()
+      fetchPublicFiles()
     }
 
-    fetchUserData()
-    fetchFiles()
-    fetchSharedFiles()
-    fetchPublicFiles()
+    // Add a small delay to ensure localStorage is available
+    if (typeof window !== 'undefined') {
+      setTimeout(checkAuth, 50)
+    }
   }, [])
 
   // Replace the fetchUserData function
   const fetchUserData = async () => {
     try {
       const token = localStorage.getItem("token")
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://sensei-2keb.onrender.com"
+      if (!token) {
+        console.log("No token in fetchUserData, redirecting")
+        router.push("/login")
+        return
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ||
+        "https://sensei-2keb.onrender.com"
       console.log("Fetching user data from:", `${apiUrl}/api/v1/auth/me`)
 
       const response = await fetch(`${apiUrl}/api/v1/auth/me`, {
@@ -73,6 +92,8 @@ export default function DashboardPage() {
 
       if (!response.ok) {
         console.error("Auth failed:", response.status)
+        // Clear invalid token
+        localStorage.removeItem("token")
         router.push("/login")
         return
       }
@@ -82,12 +103,15 @@ export default function DashboardPage() {
         const userData = await response.json()
         console.log("User data fetched:", userData)
         setUser(userData)
+        setLoading(false)
       } else {
         console.error("Non-JSON response from auth endpoint")
+        localStorage.removeItem("token")
         router.push("/login")
       }
     } catch (error) {
       console.error("Error fetching user data:", error)
+      localStorage.removeItem("token")
       router.push("/login")
     }
   }
