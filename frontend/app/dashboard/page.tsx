@@ -7,24 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Code2, FileText, Plus, Search, Share2, Users, Globe, Lock, Trash2, Eye } from "lucide-react"
+import { Code2, FileText, Plus, Search, Share2, Users, Globe, Lock, Trash2, Eye, Folder } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { CreateFileDialog } from "@/components/create-file-dialog"
+import { CreateFolderDialog } from "@/components/create-folder-dialog"
 import { ShareFileDialog } from "@/components/share-file-dialog"
 import { CodeEditor } from "@/components/code-editor"
+import { FileSystemExplorer } from "@/components/file-system-explorer"
+import { VirtualFile } from "@/types"
 
-interface VirtualFile {
-  id: string
-  name: string
-  content: string
-  directory: boolean
-  public: boolean
-  can_view: string[]
-  can_edit: string[]
-  created_at: string
-  updated_at: string
-  root: string
-}
 
 interface User {
   id: string
@@ -45,6 +36,10 @@ export default function DashboardPage() {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [fileToShare, setFileToShare] = useState<VirtualFile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [currentFile, setCurrentFile] = useState<VirtualFile | null>(null)
+  const [error, setError] = useState("")
+  const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false)
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -298,6 +293,39 @@ export default function DashboardPage() {
     return new Date(dateString).toLocaleDateString()
   }
 
+  const handleFileSelect = (file: VirtualFile) => {
+    setCurrentFile(file)
+  }
+
+  const refreshFiles = () => {
+    // This function will be called when files are created or deleted
+    // We don't need to do anything here as the FileSystemExplorer will handle its own refresh
+    if (currentFile) {
+      // Refresh the current file if it's open
+      fetchFileById(currentFile.id)
+    }
+  }
+
+  const fetchFileById = async (fileId: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+      const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${fileId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const fileData = await response.json()
+        setCurrentFile(fileData)
+      }
+    } catch (error) {
+      console.error("Error fetching file:", error)
+    }
+  }
+
   if (loading) {
     return (
       <DashboardLayout user={user}>
@@ -387,181 +415,60 @@ export default function DashboardPage() {
         <div className="grid lg:grid-cols-3 gap-4 lg:gap-6">
           {/* File Lists */}
           <div className="lg:col-span-2">
-            <Tabs defaultValue="my-files" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3 text-xs sm:text-sm">
-                <TabsTrigger value="my-files" className="px-2 sm:px-4">
-                  My Files ({files.length})
-                </TabsTrigger>
-                <TabsTrigger value="shared" className="px-2 sm:px-4">
-                  Shared ({sharedFiles.length})
-                </TabsTrigger>
-                <TabsTrigger value="public" className="px-2 sm:px-4">
-                  Public ({publicFiles.length})
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="my-files" className="space-y-4">
-                {files.length === 0 ? (
-                  <Card>
-                    <CardContent className="text-center py-12">
-                      <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                      <CardTitle className="text-xl mb-2">No files yet</CardTitle>
-                      <CardDescription className="mb-4">Create your first file to get started</CardDescription>
-                      <Button onClick={() => setShowCreateDialog(true)}>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create File
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4">
-                    {files.map((file) => (
-                      <Card key={file.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div
-                              className="flex items-center gap-3 cursor-pointer flex-1"
-                              onClick={() => setSelectedFile(file)}
-                            >
-                              {getFileIcon(file.name)}
-                              <div>
-                                <h4 className="font-medium">{file.name}</h4>
-                                <p className="text-sm text-gray-500">Updated {formatDate(file.updated_at)}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {file.public ? (
-                                <Badge variant="secondary">
-                                  <Globe className="w-3 h-3 mr-1" />
-                                  Public
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline">
-                                  <Lock className="w-3 h-3 mr-1" />
-                                  Private
-                                </Badge>
-                              )}
-                              <Button variant="ghost" size="sm" onClick={() => handleShareFile(file)}>
-                                <Share2 className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => toggleFilePublic(file)}>
-                                {file.public ? <Lock className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleFileDelete(file.id)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="shared" className="space-y-4">
-                {sharedFiles.length === 0 ? (
-                  <Card>
-                    <CardContent className="text-center py-12">
-                      <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                      <CardTitle className="text-xl mb-2">No shared files</CardTitle>
-                      <CardDescription>Files shared with you will appear here</CardDescription>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4">
-                    {sharedFiles.map((file) => (
-                      <Card key={file.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div
-                              className="flex items-center gap-3 cursor-pointer flex-1"
-                              onClick={() => setSelectedFile(file)}
-                            >
-                              {getFileIcon(file.name)}
-                              <div>
-                                <h4 className="font-medium">{file.name}</h4>
-                                <p className="text-sm text-gray-500">
-                                  Shared by {file.root} • {formatDate(file.updated_at)}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">
-                                <Users className="w-3 h-3 mr-1" />
-                                Shared
-                              </Badge>
-                              <Button variant="ghost" size="sm">
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="public" className="space-y-4">
-                <div className="grid gap-4">
-                  {publicFiles.map((file) => (
-                    <Card key={file.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div
-                            className="flex items-center gap-3 cursor-pointer flex-1"
-                            onClick={() => setSelectedFile(file)}
-                          >
-                            {getFileIcon(file.name)}
-                            <div>
-                              <h4 className="font-medium">{file.name}</h4>
-                              <p className="text-sm text-gray-500">
-                                By {file.root} • {formatDate(file.updated_at)}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">
-                              <Globe className="w-3 h-3 mr-1" />
-                              Public
-                            </Badge>
-                            <Button variant="ghost" size="sm">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
+            <FileSystemExplorer
+              onFileSelect={setSelectedFile}
+              onRefresh={fetchFiles}
+            />
           </div>
 
           {/* File Editor */}
           <div className="lg:col-span-1">
             {selectedFile ? (
-              <CodeEditor
-                file={selectedFile}
-                onSave={(content) => handleFileUpdate(selectedFile.id, content)}
-                readOnly={!files.some((f) => f.id === selectedFile.id)}
-              />
+              selectedFile.directory ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <Folder className="h-16 w-16 mx-auto text-blue-500 opacity-50" />
+                    <h3 className="text-xl font-medium mt-2">{selectedFile.name}</h3>
+                    <p className="text-gray-500 mt-1">
+                      This is a folder with {selectedFile.children?.length || 0} items
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <CodeEditor
+                  file={selectedFile}
+                  onSave={(content) => handleFileUpdate(selectedFile.id, content)}
+                  readOnly={!files.some((f) => f.id === selectedFile.id)}
+                />
+              )
             ) : (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Code2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <CardTitle className="text-xl mb-2">Select a file</CardTitle>
-                  <CardDescription>Choose a file from the list to view or edit</CardDescription>
-                </CardContent>
-              </Card>
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="h-16 w-16 mx-auto opacity-20" />
+                  <h3 className="text-xl font-medium mt-2">No File Selected</h3>
+                  <p className="text-gray-500 mt-1">Select a file from the explorer to view or edit</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
       </div>
 
       {/* Dialogs */}
-      <CreateFileDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} onFileCreated={handleFileCreate} />
+      <CreateFolderDialog
+        open={showCreateFolderDialog}
+        onOpenChange={setShowCreateFolderDialog}
+        onFolderCreated={fetchFiles}
+        parentFolderId={currentFolderId}
+      />
+
+      <CreateFileDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onFileCreated={handleFileCreate}
+        files={files}
+        parentFolderId={currentFolderId}
+      />
 
       <ShareFileDialog open={showShareDialog} onOpenChange={setShowShareDialog} file={fileToShare} />
     </DashboardLayout>

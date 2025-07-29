@@ -2,6 +2,7 @@ from firebase_admin import firestore_async as firestore
 from .firebase_service import FirebaseService
 from ..models.models import VirtualFile
 
+
 class FileSystem:
     """Virtual Filesystem for each user, for each user the root is located at {username}/
     Each created file is actually a json document with markers that allow the filesystem to
@@ -241,9 +242,7 @@ class FileSystem:
                 return False
 
             # Get the file to verify it exists and check ownership
-            from .filesystem import FileSystem
-            fs = FileSystem()
-            file = await fs.get_file(file_id)
+            file = await self.get_file(file_id)
 
             if not file:
                 print(f"File '{file_id}' not found")
@@ -257,7 +256,7 @@ class FileSystem:
 
             # Prepare updates for Firestore
             doc_ref = self.db.collection('files').document(file_id)
-            updates = {'updated_at': SERVER_TIMESTAMP} # type: ignore
+            updates = {'updated_at': SERVER_TIMESTAMP}  # type: ignore
 
             # Handle view permission
             if 'view' in permissions:
@@ -293,9 +292,7 @@ class FileSystem:
         """
         try:
             # Get the file to verify ownership
-            from .filesystem import FileSystem
-            fs = FileSystem()
-            file = await fs.get_file(file_id)
+            file = await self.get_file(file_id)
 
             if not file:
                 return False
@@ -327,10 +324,7 @@ class FileSystem:
         """
         try:
             # Get the file to verify ownership
-            from .filesystem import FileSystem
-            fs = FileSystem()
-            file = await fs.get_file(file_id)
-
+            file = await self.get_file(file_id)
             if not file:
                 return False
 
@@ -342,7 +336,7 @@ class FileSystem:
             doc_ref = self.db.collection('files').document(file_id)
             await doc_ref.update({
                 'public': True,
-                'updated_at': SERVER_TIMESTAMP # type: ignore
+                'updated_at': firestore.SERVER_TIMESTAMP  # type: ignore
             })
 
             return True
@@ -351,42 +345,35 @@ class FileSystem:
             print(f"Error making file public: {e}")
             return False
 
-    async def make_file_private(self, owner_id: str, file_id: str) -> bool:
+    async def make_file_private(self, owner: str, file_id: str) -> bool:
         """
         Make a file private (not publicly accessible).
 
         Args:
-            owner_id: ID of the file owner
+            owner_id: username of the file owner
             file_id: ID of the file to make private
 
         Returns:
             bool: True if successful, False otherwise
         """
-        try:
-            # Get the file to verify ownership
-            from .filesystem import FileSystem
-            fs = FileSystem()
-            file = await fs.get_file(file_id)
+        # Get the file to verify ownership
+        file = await self.get_file(file_id)
 
-            if not file:
-                return False
-
-            # Check if the requesting user is the owner
-            if file.root != owner_id:
-                return False
-
-            # Update the file to be private
-            doc_ref = self.db.collection('files').document(file_id)
-            await doc_ref.update({
-                'public': False,
-                'updated_at': SERVER_TIMESTAMP # type: ignore
-            })
-
-            return True
-
-        except Exception as e:
-            print(f"Error making file private: {e}")
+        if not file:
             return False
+
+        # Check if the requesting user is the owner
+        if file.root != owner:
+            return False
+
+        # Update the file to be private
+        doc_ref = self.db.collection('files').document(file_id)
+        await doc_ref.update({
+            'public': False,
+            'updated_at': SERVER_TIMESTAMP  # type: ignore
+        })
+
+        return True
 
     async def remove_user_from_view_list(self, username: str, file: VirtualFile) -> None:
         """
@@ -415,7 +402,7 @@ class FileSystem:
         if file.can_view:
             return file.can_view
         return []
-    
+
     async def _get_user_edit_list(self, file: VirtualFile) -> list[str]:
         """
         Get the list of users who can edit a file.
@@ -423,7 +410,7 @@ class FileSystem:
         if file.can_edit:
             return file.can_edit
         return []
-    
+
     async def add_user_to_view_list(self, username: str, file: VirtualFile) -> None:
         """
         Add a user to the view list of a file.
@@ -443,3 +430,56 @@ class FileSystem:
             can_edit.append(username)
             doc_ref = self.db.collection('files').document(file.id)
             await doc_ref.update({'can_edit': can_edit})
+
+    async def move_file(self, file_id: str, new_parent_id: str) -> bool:
+        """Move a file to a new parent folder"""
+        try:
+            # Get the file
+            file = await self.get_file(file_id)
+            if not file:
+                return False
+
+            # Get the new parent folder
+            new_parent = await self.get_file(new_parent_id)
+            if not new_parent or not new_parent.directory:
+                return False
+
+            # Update file's parent
+            doc_ref = self.db.collection('files').document(file_id)
+            await doc_ref.update({
+                'parent': new_parent_id,
+                'updated_at': firestore.SERVER_TIMESTAMP #type:ignore
+            })
+
+            # If old parent exists, update its children list
+            if file.parent:
+                old_parent = await self.get_file(file.parent)
+                if old_parent and old_parent.directory and old_parent.children and file_id in old_parent.children:
+                    old_children = old_parent.children.copy()
+                    old_children.remove(file_id)
+                    old_parent_ref = self.db.collection(
+                        'files').document(file.parent)
+                    await old_parent_ref.update({
+                        'children': old_children,
+                        'updated_at': firestore.SERVER_TIMESTAMP #type:ignore
+                    })
+
+            # Update new parent's children list
+            if new_parent.children:
+                new_children = new_parent.children.copy()
+            else:
+                new_children = []
+
+            if file_id not in new_children:
+                new_children.append(file_id)
+                new_parent_ref = self.db.collection(
+                    'files').document(new_parent_id)
+                await new_parent_ref.update({
+                    'children': new_children,
+                    'updated_at': firestore.SERVER_TIMESTAMP #type:ignore
+                })
+
+            return True
+        except Exception as e:
+            print(f"Error moving file: {e}")
+            return False

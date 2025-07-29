@@ -112,10 +112,10 @@ export default function HomePage() {
       <section className="container mx-auto px-4 py-8 sm:py-16 text-center">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
-            Share Code Like a <span className="text-blue-600">Sensei</span>
+            Share Code Like a <span className="text-blue-600">Shinobi</span>
           </h2>
           <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-300 mb-6 sm:mb-8 leading-relaxed px-4">
-            Create, edit, share, and collaborate on code with powerful permission management and real-time editing.
+            Create, edit, share, and collaborate on code with permission management and real-time editing.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8 sm:mb-12">
             <Link href="/register">
@@ -262,9 +262,9 @@ export default function HomePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Code2 className="w-6 h-6 text-blue-600" />
-              <span className="font-semibold text-gray-900 dark:text-white">Sensei Code Platform</span>
+              <span className="font-semibold text-gray-900 dark:text-white">Sensei Code</span>
             </div>
-            <p className="text-gray-600 dark:text-gray-400">Empowering developers worldwide</p>
+            <p className="text-gray-600 dark:text-gray-400">Live Collaboration</p>
           </div>
         </div>
       </footer>

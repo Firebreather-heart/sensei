@@ -37,10 +37,9 @@ class PermissionRequired:
 
             has_permission = False
             if self.permission == "view":
-                has_permission = await authorization_service.can_user_view_file(current_user.id, file)
+                has_permission = await authorization_service.can_user_view_file(current_user.username, file)
             elif self.permission == "edit":
-                has_permission = await authorization_service.can_user_edit_file(current_user.id, file)
-
+                has_permission = await authorization_service.can_user_edit_file(current_user.username, file)
             if not has_permission:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

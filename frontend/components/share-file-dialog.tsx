@@ -52,6 +52,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // Ensure API URL is defined and accessible throughout
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
   useEffect(() => {
     if (open && file) {
       fetchUsers()
@@ -62,7 +65,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
   const fetchUsers = async () => {
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch("/api/v1/auth/users/all/", {
+      console.log("Fetching users from:", `${apiUrl}/api/v1/auth/users/all/`)
+
+      const response = await fetch(`${apiUrl}/api/v1/auth/users/all/`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -71,6 +76,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
       if (response.ok) {
         const usersData = await response.json()
         setUsers(usersData)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Error fetching users:", response.status, errorData)
       }
     } catch (error) {
       console.error("Error fetching users:", error)
@@ -82,7 +90,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`/api/v1/filesystem/files/${file.id}/permissions`, {
+      console.log("Fetching permissions from:", `${apiUrl}/api/v1/filesystem/files/${file.id}/permissions`)
+
+      const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${file.id}/permissions`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -91,6 +101,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
       if (response.ok) {
         const permissionsData = await response.json()
         setPermissions(permissionsData)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Error fetching permissions:", response.status, errorData)
       }
     } catch (error) {
       console.error("Error fetching permissions:", error)
@@ -107,8 +120,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
     try {
       const token = localStorage.getItem("token")
       const permissions = canEdit ? ["view", "edit"] : ["view"]
+      console.log("Sharing file at:", `${apiUrl}/api/v1/filesystem/files/${file.id}/share`)
 
-      const response = await fetch(`/api/v1/filesystem/files/${file.id}/share`, {
+      const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${file.id}/share`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -125,11 +139,12 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
         setCanEdit(false)
         fetchPermissions() // Refresh permissions
       } else {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({}))
         setError(errorData.detail || "Failed to share file")
       }
     } catch (error) {
       setError("Network error. Please try again.")
+      console.error(error)
     } finally {
       setLoading(false)
     }
@@ -140,7 +155,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`/api/v1/filesystem/files/${file.id}/share/${username}`, {
+      console.log("Revoking access at:", `${apiUrl}/api/v1/filesystem/files/${file.id}/share/${username}`)
+
+      const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${file.id}/share/${username}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -149,6 +166,9 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
 
       if (response.ok) {
         fetchPermissions() // Refresh permissions
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Error revoking access:", response.status, errorData)
       }
     } catch (error) {
       console.error("Error revoking access:", error)
@@ -160,7 +180,12 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`/api/v1/filesystem/files/${file.id}/public?make_public=${!file.public}`, {
+      const makePublic = !file.public
+
+      console.log("Toggling public status at:",
+        `${apiUrl}/api/v1/filesystem/files/${file.id}/public?make_public=${makePublic}`)
+
+      const response = await fetch(`${apiUrl}/api/v1/filesystem/files/${file.id}/public?make_public=${makePublic}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -168,7 +193,11 @@ export function ShareFileDialog({ open, onOpenChange, file }: ShareFileDialogPro
       })
 
       if (response.ok) {
+        console.log("Successfully toggled public status")
         fetchPermissions() // Refresh permissions
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Error toggling public status:", response.status, errorData)
       }
     } catch (error) {
       console.error("Error toggling public status:", error)
